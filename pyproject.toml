@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "open-source-code-vulnerabilities-dataset"
+version = "0.1.0"
+description = ""
+authors = ["vodkar <boombarah@gmail.com>"]
+readme = "README.md"
+packages = [{include = "open_source_code_vulnerabilities_dataset"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+jupyter-book = "^1.0.2"
+matplotlib = "^3.9.2"
+numpy = "^2.1.1"
+polars = "^1.7.1"
+pygithub = "^2.5.0"
+ipykernel = "^6.29.5"
+ruff = "^0.9.0"
+python-gitlab = "^5.3.1"
+whatthepatch = "^1.0.7"
+chepochem = {path = "../langchain_code_loader", develop = true}
+gitpython = "^3.1.44"
+transformers = "^4.48.1"
+torch = "^2.5.1"
+torchvision = "^0.20.1"
+torchaudio = "^2.5.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+exclude = ["repos/"]
