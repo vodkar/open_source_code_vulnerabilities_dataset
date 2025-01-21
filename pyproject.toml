@@ -4,7 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["vodkar <boombarah@gmail.com>"]
 readme = "README.md"
-packages = [{include = "open_source_code_vulnerabilities_dataset"}]
+packages = [{ include = "open_source_code_vulnerabilities_dataset" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -17,13 +17,18 @@ ipykernel = "^6.29.5"
 ruff = "^0.9.0"
 python-gitlab = "^5.3.1"
 whatthepatch = "^1.0.7"
-chepochem = {path = "../langchain_code_loader", develop = true}
 gitpython = "^3.1.44"
 transformers = "^4.48.1"
-torch = "^2.5.1"
-torchvision = "^0.20.1"
-torchaudio = "^2.5.1"
+torch = { version = "^2.5.1", source = "torch" }
+xformers = { version = "^0.0.29", source = "torch" }
+unsloth = "^2025.1.6"
+ipywidgets = "^8.1.5"
 
+
+[[tool.poetry.source]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core"]
