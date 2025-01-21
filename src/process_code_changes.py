@@ -257,7 +257,7 @@ def get_changes(
                 f.write(
                     json.dumps(
                         {
-                            "commit": fix_commit,
+                            "commit": str(fix_commit),
                             "repo": repo_name,
                             "old_file": old_file,
                             "new_file": file,
@@ -277,7 +277,7 @@ def get_changes(
                 f.write(
                     json.dumps(
                         {
-                            "commit": fix_commit,
+                            "commit": str(fix_commit),
                             "repo": repo_name,
                             "old_file": old_file,
                             "new_file": file,
