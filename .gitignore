@@ -168,3 +168,6 @@ repos/
 _build/
 data/
 outputs/
+
+pretrained_vulnerability_searcher/
+vulnerability_searcher/
