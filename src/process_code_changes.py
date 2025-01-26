@@ -2,8 +2,10 @@ import json
 import logging
 import os
 import re
+import shutil
 from collections import defaultdict
 from pathlib import Path
+from time import sleep
 from typing import Any
 
 import gitlab
@@ -11,23 +13,54 @@ import jedi
 import jedi.api
 import jedi.common
 import whatthepatch
-from git import Repo
+from git import GitCommandError, Repo
 from github import Auth, Github
+from src.paths import DATA_PATH, REPOS_PATH
 
-from src.paths import DATA_PATH
-
-_AUTH = Auth.Token(os.environ["GITHUB_TOKEN"]")
+_AUTH = Auth.Token(os.environ["GITHUB_TOKEN"])
 _GITHUB_CLIENT = Github(auth=_AUTH)
 _GITLAB = gitlab.Gitlab(private_token=os.environ["GITLAB_TOKEN"])
 LOGGING = logging.getLogger(__name__)
+ALLOWED_LANGS = [
+    "C/C++",
+    "HTML",
+    "JavaScript/TypeScript",
+    "Shell",
+    "Jinja2",
+]
+
+
+def git_checkout(repo: Repo, commit: str):
+    clear_jedi_cache()
+    try:
+        repo.git.checkout(commit)
+    except GitCommandError:
+        repo.head.reset(
+            "HEAD",
+            index=True,
+            working_tree=False,
+            paths=None,
+        )
+        repo.git.checkout(commit)
+    sleep(0.5)
+
+
+def clear_jedi_cache():
+    shutil.rmtree(jedi.settings.cache_directory, ignore_errors=True)
+
+
+def cut_home_path(path: Path) -> str:
+    if str(REPOS_PATH) in path.parts:
+        return "/".join(path.parts[path.parts.index(str(REPOS_PATH)) + 1 :])
+    return str(path)
 
 
 def clear_file_content(content: str):
-    return re.sub(r"#.+\n", "\n", content)
+    return re.sub(r".+#.+\n", "\n", content)
 
 
 def clear_file_content_v2(content: str):
-    content = re.sub(r"#.+\n", "\n", content)
+    content = re.sub(r".+#.+\n", "\n", content)
     return re.sub(r"\n\n", "\n", content)
 
 
@@ -93,12 +126,18 @@ def get_function_context(
             names: list[jedi.api.classes.Name] = script.goto(
                 line_number, column_number, follow_imports=True
             )
-
             names_no_follow: list[jedi.api.classes.Name] = script.goto(
                 line_number,
                 column_number,
             )
-            for name in names_no_follow + names:
+
+            references: list[jedi.api.classes.Name] = script.get_references(
+                line_number, column_number, include_builtins=False
+            )
+
+            for name in names_no_follow + names + references:
+                if name.module_path is None:
+                    continue
                 if name.module_name.split(".")[0] != function.module_name.split(".")[0]:
                     continue
                 if name.module_path is None:
@@ -113,13 +152,15 @@ def get_function_context(
                     name.type == "statement"
                     or name.type == "class"
                     or name.type == "instance"
+                    or name.type == "property"
                 ):
-                    line_numbers.update(
-                        range(
-                            name.get_definition_start_position()[0],
-                            name.get_definition_end_position()[0] + 1,
+                    if name.get_definition_start_position():
+                        line_numbers.update(
+                            range(
+                                name.get_definition_start_position()[0],
+                                name.get_definition_end_position()[0] + 1,
+                            )
                         )
-                    )
                 elif name.type == "module":
                     # script_path = name.module_path
                     # context[script_path].update(get_function_body_lines(name))
@@ -142,8 +183,8 @@ def get_function_context(
 def get_changes_lines_units(
     repo_name: str, file_name: str, fix_changes_line_numbers: list[int]
 ) -> tuple[str, dict[Path, str]]:
-    project = jedi.Project(f"repos/{repo_name}")
-    script = jedi.Script(path=f"repos/{repo_name}/{file_name}", project=project)
+    project = jedi.Project(f"{REPOS_PATH}/{repo_name}")
+    script = jedi.Script(path=f"{REPOS_PATH}/{repo_name}/{file_name}", project=project)
 
     functions_body_lines: set[int] = set()
     context_lines: dict[Path, set[int]] = defaultdict(set)
@@ -151,13 +192,7 @@ def get_changes_lines_units(
         if fix_line in functions_body_lines:
             continue
         line_context = script.get_context(fix_line)
-        if line_context.type == "class":
-            functions_body_lines.update(get_function_body_lines(line_context))
-            for context_file, context_line_numbers in get_function_context(
-                script, line_context
-            ).items():
-                context_lines[context_file].update(context_line_numbers)
-        elif line_context.type == "function":
+        if line_context.type == "class" or line_context.type == "function":
             functions_body_lines.update(get_function_body_lines(line_context))
             for context_file, context_line_numbers in get_function_context(
                 script, line_context
@@ -167,10 +202,10 @@ def get_changes_lines_units(
             functions_body_lines.add(fix_line)
 
     code_unit_data = "\n".join(
-        read_lines(f"repos/{repo_name}/{file_name}", functions_body_lines)
+        read_lines(f"{REPOS_PATH}/{repo_name}/{file_name}", functions_body_lines)
     )
     context_data = {
-        Path(file): "\n".join(read_lines(str(file), lines))
+        cut_home_path(Path(file)): "\n".join(read_lines(str(file), lines))
         for file, lines in context_lines.items()
     }
 
@@ -178,29 +213,41 @@ def get_changes_lines_units(
 
 
 def get_changes(
-    commit_data_row: dict[str, Any]
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    commit_data_row: dict[str, Any],
+) -> None:
     fix_commit = commit_data_row["commit"]
     repo_name = commit_data_row["repo"]
-    code_unit_changes_to_return: list[dict[str, Any]] = []
-    code_context_changes_to_return: list[dict[str, Any]] = []
 
     try:
-        if os.path.exists(f"repos/{repo_name}"):
-            local_repo = Repo(f"repos/{repo_name}")
+        if os.path.exists(f"{REPOS_PATH}/{repo_name}"):
+            local_repo = Repo(f"{REPOS_PATH}/{repo_name}")
         elif commit_data_row["commit_source"] == "github":
             repo = _GITHUB_CLIENT.get_repo(repo_name)
-            local_repo = Repo.clone_from(repo.clone_url, f"repos/{repo_name}")
+            local_repo = Repo.clone_from(repo.clone_url, f"{REPOS_PATH}/{repo_name}")
         elif commit_data_row["commit_source"] == "gitlab":
             repo = _GITLAB.projects.get(repo_name)
-            local_repo = Repo.clone_from(repo.ssh_url_to_repo, f"repos/{repo_name}")
+            local_repo = Repo.clone_from(
+                repo.ssh_url_to_repo, f"{REPOS_PATH}/{repo_name}"
+            )
 
-        fix_commit, previous_commit = list(
-            local_repo.iter_commits(fix_commit, max_count=2)
-        )[:2]
+        try:
+            fix_commit, previous_commit = list(
+                local_repo.iter_commits(fix_commit, max_count=2)
+            )[:2]
+        except GitCommandError:
+            return
         new_old_file = {}
-        for change in fix_commit.diff(previous_commit):
-            new_old_file[change.a_path] = change.b_path
+        deleted_old_files = set()
+        for file, stats in fix_commit.stats.files.items():
+            if stats["change_type"] == "M":
+                new_old_file[file] = Path(file)
+            elif stats["change_type"] == "A":
+                new_old_file[file] = None
+            elif stats["change_type"] == "D":
+                deleted_old_files.add(file)
+            else:
+                new_old_file[file] = None
+                raise Exception("File not found")
 
         for patch, file, language in zip(
             commit_data_row["patch"],
@@ -220,46 +267,66 @@ def get_changes(
                     # Ignore unchanged lines
 
             old_file = new_old_file[file]
-            local_repo.git.checkout(fix_commit)
+            git_checkout(local_repo, fix_commit)
 
             if language == "Python":
-                code_unit_after_fix, code_context_after_fix = get_changes_lines_units(
-                    repo_name, file, fix_changes_line_numbers
-                )
+                if file not in deleted_old_files:
+                    code_unit_after_fix, code_context_after_fix = (
+                        get_changes_lines_units(
+                            repo_name, file, fix_changes_line_numbers
+                        )
+                    )
 
-                local_repo.git.checkout(previous_commit)
-                code_unit_before_fix, code_context_before_fix = get_changes_lines_units(
-                    repo_name, old_file, previous_changes_line_numbers
-                )
+                if old_file:
+                    git_checkout(local_repo, previous_commit)
+                    code_unit_before_fix, code_context_before_fix = (
+                        get_changes_lines_units(
+                            repo_name, old_file, previous_changes_line_numbers
+                        )
+                    )
+                else:
+                    code_unit_before_fix = ""
+                    code_context_before_fix = {}
+            elif language in ALLOWED_LANGS:
+                if file not in deleted_old_files:
+                    code_unit_after_fix = clear_file_content_v2(
+                        "\n".join(
+                            read_lines(
+                                f"{REPOS_PATH}/{repo_name}/{file}",
+                                set(fix_changes_line_numbers),
+                            )
+                        )
+                    )
+                    code_context_after_fix = {file: code_unit_after_fix}
+
+                if old_file:
+                    git_checkout(local_repo, previous_commit)
+                    code_unit_before_fix = clear_file_content_v2(
+                        "\n".join(
+                            read_lines(
+                                f"{REPOS_PATH}/{repo_name}/{old_file}",
+                                set(previous_changes_line_numbers),
+                            )
+                        )
+                    )
+                    code_context_before_fix = {
+                        cut_home_path(old_file): code_unit_before_fix
+                    }
+                else:
+                    code_unit_before_fix = ""
+                    code_context_before_fix = {}
             else:
-                code_unit_after_fix = clear_file_content(
-                    "\n".join(
-                        read_lines(
-                            f"repos/{repo_name}/{file}", set(fix_changes_line_numbers)
-                        )
-                    )
-                )
-                code_context_after_fix = {file: code_unit_after_fix}
+                continue
 
-                local_repo.git.checkout(previous_commit)
-                code_unit_before_fix = clear_file_content(
-                    "\n".join(
-                        read_lines(
-                            f"repos/{repo_name}/{old_file}",
-                            set(previous_changes_line_numbers),
-                        )
-                    )
-                )
-                code_context_before_fix = {old_file: code_unit_before_fix}
-
-            result_path = DATA_PATH / "code_units" / f"{fix_commit}.json"
-            with open(result_path, "w") as f:
+            result_path = DATA_PATH / "code_units" / str(fix_commit) / f"{file}.json"
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            with result_path.open("w") as f:
                 f.write(
                     json.dumps(
                         {
                             "commit": str(fix_commit),
                             "repo": repo_name,
-                            "old_file": old_file,
+                            "old_file": cut_home_path(old_file) if old_file else None,
                             "new_file": file,
                             "patch": patch,
                             "code_unit_before_fix": clear_file_content(
@@ -268,26 +335,40 @@ def get_changes(
                             "code_unit_after_fix": clear_file_content(
                                 code_unit_after_fix
                             ),
+                            "vulnerability_id": commit_data_row["vulnerability_id"],
+                            "cwe_id": commit_data_row["cwe_id"],
                         }
                     )
                 )
 
-            result_context_path = DATA_PATH / "context" / f"{fix_commit}.json"
-            with open(result_context_path, "w") as f:
+            result_context_path = (
+                DATA_PATH / "context" / str(fix_commit) / f"{file}.json"
+            )
+            result_context_path.parent.mkdir(parents=True, exist_ok=True)
+            with result_context_path.open("w") as f:
                 f.write(
                     json.dumps(
                         {
                             "commit": str(fix_commit),
                             "repo": repo_name,
-                            "old_file": old_file,
+                            "old_file": cut_home_path(old_file) if old_file else None,
                             "new_file": file,
                             "patch": patch,
-                            "code_context_before_fix": code_context_after_fix,
-                            "code_context_after_fix": code_context_before_fix,
+                            "code_context_before_fix": {
+                                path: code
+                                for path, code in code_context_after_fix.items()
+                            },
+                            "code_context_after_fix": {
+                                path: code
+                                for path, code in code_context_before_fix.items()
+                            },
+                            "vulnerability_id": commit_data_row["vulnerability_id"],
+                            "cwe_id": commit_data_row["cwe_id"],
                         }
                     )
                 )
 
-    except Exception as e:
+    except Exception:
         LOGGING.error(f"Error processing commit {fix_commit}")
-        return e
+        LOGGING.error(commit_data_row)
+        raise
