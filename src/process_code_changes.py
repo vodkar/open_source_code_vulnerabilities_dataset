@@ -13,6 +13,7 @@ from uuid import uuid4
 import gitlab
 import jedi
 import jedi.api
+import jedi.settings
 import whatthepatch
 from git import GitCommandError, Repo
 from github import Auth, Github
@@ -23,6 +24,8 @@ from src.get_changes_lines_units import (
     read_lines,
 )
 from src.paths import DATA_PATH, REPOS_PATH
+
+jedi.settings.fast_parser = False
 
 _AUTH = Auth.Token(os.environ["GITHUB_TOKEN"])
 _GITHUB_CLIENT = Github(auth=_AUTH)
@@ -144,14 +147,18 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
             if language == "Python":
                 if file not in deleted_old_files:
                     code_unit_after_fix, code_context_after_fix = (
-                        get_changes_lines_units(
+                        _get_changes_lines_units(
                             repo_name, file, fix_changes_line_numbers
                         )
                     )
+                    code_context_after_fix = clear_file_content_v2(code_unit_after_fix)
+                else:
+                    code_unit_after_fix = ""
+                    code_context_after_fix = {}
             elif language in ALLOWED_LANGS:
                 if file not in deleted_old_files:
                     code_unit_after_fix = clear_file_content_v2(
-                        "\n".join(
+                        "".join(
                             read_lines(
                                 f"{REPOS_PATH}/{repo_name}/{file}",
                                 set(fix_changes_line_numbers),
@@ -159,6 +166,9 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                         )
                     )
                     code_context_after_fix = {file: code_unit_after_fix}
+                else:
+                    code_unit_after_fix = ""
+                    code_context_after_fix = {}
             else:
                 continue
 
@@ -207,7 +217,7 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
             if language == "Python":
                 if old_file:
                     code_unit_before_fix, code_context_before_fix = (
-                        get_changes_lines_units(
+                        _get_changes_lines_units(
                             repo_name, old_file, previous_changes_line_numbers
                         )
                     )
