@@ -25,7 +25,7 @@ from src.get_changes_lines_units import (
 )
 from src.paths import DATA_PATH, REPOS_PATH
 
-jedi.settings.fast_parser = False
+# jedi.settings.fast_parser = False
 
 _AUTH = Auth.Token(os.environ["GITHUB_TOKEN"])
 _GITHUB_CLIENT = Github(auth=_AUTH)
@@ -59,7 +59,7 @@ def clear_file_content(content: str):
 
 
 def clear_file_content_v2(content: str):
-    content = re.sub(r".+#.+\n", "\n", content)
+    content = re.sub(r"\s*#.*", "\n", content)
     return re.sub(r"\n\n", "\n", content)
 
 
@@ -104,11 +104,11 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
             )
 
         try:
-            fix_commit, previous_commit = list(
-                local_repo.iter_commits(fix_commit, max_count=2)
-            )[:2]
-        except GitCommandError:
+            fix_commit = local_repo.commit(fix_commit)
+        except ValueError:
             return
+        git_checkout(local_repo, fix_commit)
+        previous_commit = local_repo.head.commit.parents[0]
 
         new_old_file = {}
         deleted_old_files = set()
@@ -123,7 +123,6 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 new_old_file[file] = None
                 raise Exception("File not found")
 
-        git_checkout(local_repo, fix_commit)
         after_fix_data = {}
         after_fix_context_data = {}
         for patch, file, language, temp_id in zip(
@@ -212,7 +211,10 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                         fix_changes_line_numbers.append(change.new)
                     # Ignore unchanged lines
 
-            old_file = new_old_file[file]
+            if file in deleted_old_files:
+                old_file = Path(file)
+            else:
+                old_file = new_old_file[file]
 
             if language == "Python":
                 if old_file:

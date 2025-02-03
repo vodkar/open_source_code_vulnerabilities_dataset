@@ -92,6 +92,15 @@ python_vulnerability_fixes = python_vulnerability_fixes.filter(
         [
             "6bbf44a00b35fb28df1f66aa194b2fe95eab1ab2",
             "e0d1f8b38ec1a24e2999d63420554d8393206f58",
+            "5f7496481bd3db1d06a2d2e62c0dce960a1fe12b",
+            # Not exists in repo
+            "13336272e32872247fa7d17e964ccd88ec8d1376",
+            "2bfe358043096fdba9e2a4cf0f5740102b37fd8f",
+            "dca5e7d116b5c8b103df13f89f061757c13c41ae",
+            "10ec1b4e9f93713513a3264ed6158af22492f270",
+            "a7d8fe64a15b9c228654441166a5ba85d0a5f8ef",
+            "d772f38f843b9add5319a01cf51a844145b01f63",
+            "fe28767970c8ec62aabe493c46b53a5de1e5fac0",
         ]
     )
 )
@@ -164,9 +173,13 @@ checked_commits = set([change["commit"] for change in code_unit_changes])
 #     pool.map(process, params)
 
 
+checked_commits = set([change["commit"] for change in code_unit_changes])
+
 vulnerabilities_to_check = grouped_vulnerabilities.to_dicts()
 
 
 for commit_data_row in tqdm(vulnerabilities_to_check):
-    if commit_data_row["commit"] == "32de2154ef9f946160e5dc01a4d8a449dd0bd259":
-        get_changes(commit_data_row)
+    if commit_data_row["commit"] in checked_commits:
+        continue
+    # if commit_data_row["commit"] == "13336272e32872247fa7d17e964ccd88ec8d1376":
+    get_changes(commit_data_row)
