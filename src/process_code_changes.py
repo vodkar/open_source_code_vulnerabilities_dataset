@@ -55,11 +55,7 @@ def clear_jedi_cache():
 
 
 def clear_file_content(content: str):
-    return re.sub(r".+#.+\n", "\n", content)
-
-
-def clear_file_content_v2(content: str):
-    content = re.sub(r"\s*#.*", "\n", content)
+    content = re.sub(r"\s*#.*\n", "\n", content)
     return re.sub(r"\n\n", "\n", content)
 
 
@@ -150,13 +146,13 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                             repo_name, file, fix_changes_line_numbers
                         )
                     )
-                    code_context_after_fix = clear_file_content_v2(code_unit_after_fix)
+                    code_context_after_fix = clear_file_content(code_unit_after_fix)
                 else:
                     code_unit_after_fix = ""
                     code_context_after_fix = {}
             elif language in ALLOWED_LANGS:
                 if file not in deleted_old_files:
-                    code_unit_after_fix = clear_file_content_v2(
+                    code_unit_after_fix = clear_file_content(
                         "".join(
                             read_lines(
                                 f"{REPOS_PATH}/{repo_name}/{file}",
@@ -228,7 +224,7 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                     code_context_before_fix = {}
             elif language in ALLOWED_LANGS:
                 if old_file:
-                    code_unit_before_fix = clear_file_content_v2(
+                    code_unit_before_fix = clear_file_content(
                         "\n".join(
                             read_lines(
                                 f"{REPOS_PATH}/{repo_name}/{old_file}",

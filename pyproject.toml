@@ -3,7 +3,6 @@ name = "open-source-code-vulnerabilities-dataset"
 version = "0.1.0"
 description = ""
 authors = ["vodkar <boombarah@gmail.com>"]
-readme = "README.md"
 packages = [{ include = "open_source_code_vulnerabilities_dataset" }]
 
 [tool.poetry.dependencies]
@@ -18,6 +17,8 @@ ruff = "^0.9.0"
 python-gitlab = "^5.3.1"
 whatthepatch = "^1.0.7"
 gitpython = "^3.1.44"
+
+[tool.poetry.group.finetune.dependencies]
 transformers = "^4.48.1"
 torch = { version = "^2.5.1", source = "torch" }
 xformers = "^0.0.29"

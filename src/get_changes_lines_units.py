@@ -169,7 +169,7 @@ def _get_changes_lines_units(
                     functions_body_lines.update(
                         range(
                             names[idx - 1].get_definition_end_position()[0],
-                            name.get_definition_start_position()[0] + 1,
+                            name.get_definition_start_position()[0],
                         )
                     )
                     break
