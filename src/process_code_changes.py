@@ -83,11 +83,9 @@ def remove_comments(content: str) -> str:
             if scol > last_col:
                 mod.write(" " * (scol - last_col))
             if toktype == token.STRING and prev_toktype == token.INDENT:
-                # Docstring
-                mod.write("#--")
+                continue
             elif toktype == tokenize.COMMENT:
-                # Comment
-                mod.write("##\n")
+                continue
             else:
                 mod.write(ttext)
             prev_toktype = toktype
@@ -100,7 +98,7 @@ def remove_comments(content: str) -> str:
 
 def clear_file_content(content: str):
     content = remove_comments(content)
-    return re.sub(r"\n\n", "\n", content)
+    return re.sub(r"\n\s*\n", "\n", content)
 
 
 def get_changes_lines_units(
@@ -291,7 +289,6 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 "code_unit_before_fix": code_unit_before_fix,
                 "vulnerability_id": commit_data_row["vulnerability_id"],
                 "cwe_id": commit_data_row["cwe_id"],
-                "temp_id": commit_data_row["temp_id"],
             }
             before_fix_context_data[temp_id] = {
                 "commit": str(fix_commit),
@@ -301,7 +298,6 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 "code_context_before_fix": code_context_before_fix,
                 "vulnerability_id": commit_data_row["vulnerability_id"],
                 "cwe_id": commit_data_row["cwe_id"],
-                "temp_id": commit_data_row["temp_id"],
             }
 
         result_directory = DATA_PATH / "code_units" / str(fix_commit)
@@ -313,7 +309,6 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 / f"{after_fix['new_file'] or before_fix['old_file']}.json"
             )
             fix_data = after_fix | before_fix
-            del fix_data["temp_id"]
 
             result_file.parent.mkdir(parents=True, exist_ok=True)
             with result_file.open("w") as f:
