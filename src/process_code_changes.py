@@ -4,6 +4,9 @@ import multiprocessing
 import os
 import re
 import shutil
+import tempfile
+import token
+import tokenize
 from multiprocessing import Process, Queue
 from pathlib import Path
 from time import sleep
@@ -54,8 +57,49 @@ def clear_jedi_cache():
     shutil.rmtree(jedi.settings.cache_directory, ignore_errors=True)
 
 
+def remove_comments(content: str) -> str:
+    tempfile_name = tempfile.mktemp()
+    with open(tempfile_name, "w") as f:
+        f.write(content)
+    with open(tempfile_name) as source, open(tempfile_name + ",strip", "w") as mod:
+        prev_toktype = token.INDENT
+        last_lineno = -1
+        last_col = 0
+
+        tokgen = tokenize.generate_tokens(source.readline)
+        for toktype, ttext, (slineno, scol), (elineno, ecol), ltext in tokgen:
+            if 0:  # Change to if 1 to see the tokens fly by.
+                print(
+                    "%10s %-14s %-20r %r"
+                    % (
+                        tokenize.tok_name.get(toktype, toktype),
+                        "%d.%d-%d.%d" % (slineno, scol, elineno, ecol),
+                        ttext,
+                        ltext,
+                    )
+                )
+            if slineno > last_lineno:
+                last_col = 0
+            if scol > last_col:
+                mod.write(" " * (scol - last_col))
+            if toktype == token.STRING and prev_toktype == token.INDENT:
+                # Docstring
+                mod.write("#--")
+            elif toktype == tokenize.COMMENT:
+                # Comment
+                mod.write("##\n")
+            else:
+                mod.write(ttext)
+            prev_toktype = toktype
+            last_col = ecol
+            last_lineno = elineno
+
+    with open(tempfile_name + ",strip") as f:
+        return f.read()
+
+
 def clear_file_content(content: str):
-    content = re.sub(r"\s*#.*\n", "\n", content)
+    content = remove_comments(content)
     return re.sub(r"\n\n", "\n", content)
 
 
@@ -147,17 +191,16 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                         )
                     )
                     code_context_after_fix = clear_file_content(code_unit_after_fix)
+                    code_unit_after_fix = clear_file_content(code_unit_after_fix)
                 else:
                     code_unit_after_fix = ""
                     code_context_after_fix = {}
             elif language in ALLOWED_LANGS:
                 if file not in deleted_old_files:
-                    code_unit_after_fix = clear_file_content(
-                        "".join(
-                            read_lines(
-                                f"{REPOS_PATH}/{repo_name}/{file}",
-                                set(fix_changes_line_numbers),
-                            )
+                    code_unit_after_fix = "".join(
+                        read_lines(
+                            f"{REPOS_PATH}/{repo_name}/{file}",
+                            set(fix_changes_line_numbers),
                         )
                     )
                     code_context_after_fix = {file: code_unit_after_fix}
@@ -172,7 +215,7 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 "repo": repo_name,
                 "new_file": file,
                 "patch": patch,
-                "code_unit_after_fix": clear_file_content(code_unit_after_fix),
+                "code_unit_after_fix": code_unit_after_fix,
                 "vulnerability_id": commit_data_row["vulnerability_id"],
                 "cwe_id": commit_data_row["cwe_id"],
             }
@@ -219,17 +262,16 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                             repo_name, old_file, previous_changes_line_numbers
                         )
                     )
+                    code_unit_before_fix = clear_file_content(code_unit_before_fix)
                 else:
                     code_unit_before_fix = ""
                     code_context_before_fix = {}
             elif language in ALLOWED_LANGS:
                 if old_file:
-                    code_unit_before_fix = clear_file_content(
-                        "\n".join(
-                            read_lines(
-                                f"{REPOS_PATH}/{repo_name}/{old_file}",
-                                set(previous_changes_line_numbers),
-                            )
+                    code_unit_before_fix = "".join(
+                        read_lines(
+                            f"{REPOS_PATH}/{repo_name}/{old_file}",
+                            set(previous_changes_line_numbers),
                         )
                     )
                     code_context_before_fix = {
@@ -246,7 +288,7 @@ def get_changes(commit_data_row: dict[str, Any]) -> None:
                 "repo": repo_name,
                 "old_file": cut_home_path(old_file) if old_file else None,
                 "patch": patch,
-                "code_unit_before_fix": clear_file_content(code_unit_before_fix),
+                "code_unit_before_fix": code_unit_before_fix,
                 "vulnerability_id": commit_data_row["vulnerability_id"],
                 "cwe_id": commit_data_row["cwe_id"],
                 "temp_id": commit_data_row["temp_id"],

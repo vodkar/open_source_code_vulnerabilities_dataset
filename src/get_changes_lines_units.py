@@ -31,6 +31,10 @@ def get_function_body_lines(function: jedi.api.classes.Name) -> set[int]:
         print(function.module_path)
         print(function)
         raise ValueError("Function definition not found")
+    code = function.module_path.read_text().split("\n")
+    start_pos = start[0]
+    while code[start_pos - 2].strip().startswith("@"):
+        start_pos -= 1
     line_numbers = list(range(start[0], end[0] + 1))
     body_lines.update(line_numbers)
 
@@ -38,12 +42,18 @@ def get_function_body_lines(function: jedi.api.classes.Name) -> set[int]:
     while parent:
         if parent.type == "class" or parent.type == "function":
             start = parent.get_definition_start_position()
-            end = parent.defined_names()[0].get_definition_start_position()
+            end = parent.defined_names()[0].get_definition_start_position()[0]
             if start is None or end is None:
                 print(function.get_line_code())
                 print(function)
                 raise ValueError("Class definition not found")
-            line_numbers = list(range(start[0], end[0]))
+            if parent.type == "function":
+                while end - 1 < len(code) and "):" not in code[end - 1]:
+                    end += 1
+            start_pos = start[0]
+            while code[start_pos - 2].strip().startswith("@"):
+                start_pos -= 1
+            line_numbers = list(range(start_pos, end))
             body_lines.update(line_numbers)
         elif parent.type == "module":
             break
@@ -136,12 +146,17 @@ def _get_changes_lines_units(
     repo_name: str, file_name: str, fix_changes_line_numbers: list[int]
 ) -> tuple[str, dict]:
     project = jedi.Project(f"{REPOS_PATH}/{repo_name}")
-    script = jedi.Script(path=f"{REPOS_PATH}/{repo_name}/{file_name}", project=project)
+    script_path = REPOS_PATH / repo_name / file_name
+    script = jedi.Script(path=script_path, project=project)
+    script_text = script_path.read_text().split("\n")
 
     functions_body_lines: set[int] = set()
     context_lines: dict[Path, set[int]] = defaultdict(set)
     for fix_line in fix_changes_line_numbers:
         if fix_line in functions_body_lines:
+            continue
+        if read_lines(script_path, [fix_line])[0].strip().startswith("@"):
+            functions_body_lines.add(fix_line)
             continue
         line_context = script.get_context(fix_line)
         if line_context.type == "class" or line_context.type == "function":
@@ -150,6 +165,8 @@ def _get_changes_lines_units(
             #     script, line_context
             # ).items():
             #     context_lines[context_file].update(context_line_numbers)
+        elif script_text[fix_line - 1].strip() == "":
+            continue
         else:
             names = script.get_names()
             for idx, name in enumerate(names):
@@ -168,7 +185,7 @@ def _get_changes_lines_units(
                 if name.get_definition_start_position()[0] > fix_line:
                     functions_body_lines.update(
                         range(
-                            names[idx - 1].get_definition_end_position()[0],
+                            names[idx - 1].get_definition_end_position()[0] + 1,
                             name.get_definition_start_position()[0],
                         )
                     )
