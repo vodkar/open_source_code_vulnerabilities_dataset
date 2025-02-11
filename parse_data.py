@@ -181,5 +181,6 @@ vulnerabilities_to_check = grouped_vulnerabilities.to_dicts()
 for commit_data_row in tqdm(vulnerabilities_to_check):
     # if commit_data_row["commit"] in checked_commits:
     #     continue
-    if commit_data_row["commit"] == "2342693b31f740a422abf7267c53b4e7bc487c1b":
+    if commit_data_row["commit"] == "82c1ad37a866472562d81fedaef0f4fed0a08269":
+        print(commit_data_row)
         get_changes(commit_data_row)

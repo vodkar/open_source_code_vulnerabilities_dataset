@@ -20,6 +20,73 @@ def read_lines(file: str, line_numbers: set[int]):
         ]
 
 
+def _get_parent_lines(parent: jedi.api.classes.Name) -> set[int]:
+    lines = set()
+    code = parent.module_path.read_text().split("\n")
+    while parent:
+        if parent.type == "class" or parent.type == "function":
+            start = parent.get_definition_start_position()
+            end = parent.get_definition_end_position()[0]
+            if parent.type == "class":
+                end = parent.defined_names()[0].get_definition_start_position()[0]
+            if start is None or end is None:
+                print(parent.get_line_code())
+                print(parent)
+                raise ValueError("Class definition not found")
+            start_pos = start[0]
+            while code[start_pos - 2].strip().startswith("@"):
+                start_pos -= 1
+            line_numbers = list(range(start_pos, end))
+            lines.update(line_numbers)
+        elif parent.type == "module":
+            break
+        else:
+            print(parent.module_path)
+            print(parent.get_definition_start_position())
+            raise NotImplementedError(f"Parent type {parent.type}")
+        parent = parent.parent()
+    return lines
+
+
+def get_class_unit_lines(
+    class_context: jedi.api.classes.Name, unit_line: int
+) -> set[int]:
+    class_unit_lines = set([unit_line])
+    for name in class_context.defined_names():
+        if (
+            name.get_definition_start_position()[0]
+            <= unit_line
+            <= name.get_definition_end_position()[0]
+        ):
+            class_unit_lines.update(
+                range(
+                    name.get_definition_start_position()[0],
+                    name.get_definition_end_position()[0] + 1,
+                )
+            )
+            break
+
+    if names := class_context.defined_names():
+        class_unit_lines.update(
+            range(
+                class_context.line,
+                names[0].get_definition_start_position()[0],
+            )
+        )
+    # in case if class body haven't definitions
+    else:
+        class_unit_lines.update(
+            range(
+                class_context.line,
+                class_context.get_definition_end_position()[0] + 1,
+            )
+        )
+
+    if parent := class_context.parent():
+        class_unit_lines.update(_get_parent_lines(parent))
+    return class_unit_lines
+
+
 def get_function_body_lines(function: jedi.api.classes.Name) -> set[int]:
     body_lines: set[int] = set()
     start = function.get_definition_start_position()
@@ -42,18 +109,19 @@ def get_function_body_lines(function: jedi.api.classes.Name) -> set[int]:
     while parent:
         if parent.type == "class" or parent.type == "function":
             start = parent.get_definition_start_position()
-            end = parent.defined_names()[0].get_definition_start_position()[0]
+            end = parent.get_definition_end_position()[0]
+            if parent.type == "class":
+                end = (
+                    parent.defined_names()[0].get_definition_start_position()[0] - 1
+                )  # We do + 1 in further
             if start is None or end is None:
                 print(function.get_line_code())
                 print(function)
                 raise ValueError("Class definition not found")
-            if parent.type == "function":
-                while end - 1 < len(code) and "):" not in code[end - 1]:
-                    end += 1
             start_pos = start[0]
             while code[start_pos - 2].strip().startswith("@"):
                 start_pos -= 1
-            line_numbers = list(range(start_pos, end))
+            line_numbers = list(range(start_pos, end + 1))
             body_lines.update(line_numbers)
         elif parent.type == "module":
             break
@@ -155,11 +223,17 @@ def _get_changes_lines_units(
     for fix_line in fix_changes_line_numbers:
         if fix_line in functions_body_lines:
             continue
-        if read_lines(script_path, [fix_line])[0].strip().startswith("@"):
-            functions_body_lines.add(fix_line)
+        line_text = read_lines(script_path, [fix_line])[0].strip()
+        if line_text.startswith("#"):
             continue
         line_context = script.get_context(fix_line)
-        if line_context.type == "class" or line_context.type == "function":
+
+        if line_text.startswith("@"):
+            functions_body_lines.add(fix_line)
+            continue
+        if line_context.type == "class":
+            functions_body_lines.update(get_class_unit_lines(line_context, fix_line))
+        elif line_context.type == "function":
             functions_body_lines.update(get_function_body_lines(line_context))
             # for context_file, context_line_numbers in get_function_context(
             #     script, line_context

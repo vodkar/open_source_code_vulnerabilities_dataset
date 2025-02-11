@@ -18,6 +18,7 @@ import jedi
 import jedi.api
 import jedi.settings
 import whatthepatch
+from black import FileMode, format_str
 from git import GitCommandError, Repo
 from github import Auth, Github
 
@@ -97,8 +98,13 @@ def remove_comments(content: str) -> str:
 
 
 def clear_file_content(content: str):
-    content = remove_comments(content)
-    return re.sub(r"\n\s*\n", "\n", content)
+    new_content = remove_comments(content)
+    try:
+        new_content = format_str(new_content, mode=FileMode())
+    except:
+        # If comments removing broke syntax, we dont remove commits.
+        new_content = format_str(content, mode=FileMode())
+    return re.sub(r"\n\s*\n", "\n", new_content)
 
 
 def get_changes_lines_units(
