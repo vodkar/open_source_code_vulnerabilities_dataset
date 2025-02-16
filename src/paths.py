@@ -14,3 +14,10 @@ PYTHON_CODE_FIXES_WITH_CONTEXT_DATA_PATH = (
 
 PYTHON_CODE_UNITS_DATA_PATH = DATA_PATH / "code_units"
 PYTHON_CODE_CONTEXT_DATA_PATH = DATA_PATH / "context"
+
+PYTHON_VULNERABILITIES_WITHOUT_BALANCING = (
+    DATA_PATH / "python_vulnerabilities_without_balancing.parquet"
+)
+FINAL_VULNERABILITIES_DATA_PATH = DATA_PATH / "final_vulnerabilities.parquet"
+
+SYNTHETIC_DATA_PATH = DATA_PATH / "synthetic_data"

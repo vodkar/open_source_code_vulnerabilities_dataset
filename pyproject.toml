@@ -18,6 +18,9 @@ python-gitlab = "^5.3.1"
 whatthepatch = "^1.0.7"
 gitpython = "^3.1.44"
 black = "^25.1.0"
+langchain = "^0.3.18"
+langchain_community = "^0.3.17"
+openai = "^1.62.0"
 
 [tool.poetry.group.finetune.dependencies]
 transformers = "^4.48.1"
