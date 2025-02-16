@@ -110,7 +110,7 @@ def clear_file_content(content: str):
 def get_changes_lines_units(
     repo_name: str, file_name: str, fix_changes_line_numbers: list[int]
 ) -> tuple[str, dict[Path, str]]:
-    multiprocessing.set_start_method("fork", force=True)
+    # multiprocessing.set_start_method("fork", force=True)
     queue = Queue()  # Create a queue to share data between processes
     process = Process(
         target=_get_changes_lines_units,

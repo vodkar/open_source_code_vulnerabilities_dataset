@@ -211,67 +211,36 @@ def get_function_context(
 
 
 def _get_changes_lines_units(
-    repo_name: str, file_name: str, fix_changes_line_numbers: list[int]
-) -> tuple[str, dict]:
-    project = jedi.Project(f"{REPOS_PATH}/{repo_name}")
-    script_path = REPOS_PATH / repo_name / file_name
-    script = jedi.Script(path=script_path, project=project)
-    script_text = script_path.read_text().split("\n")
+    repo_name: str, file_name: str, fix_changes_line_numbers: list[int], queue: Queue
+) -> None:
+    try:
+        project = jedi.Project(f"{REPOS_PATH}/{repo_name}")
+        script = jedi.Script(
+            path=f"{REPOS_PATH}/{repo_name}/{file_name}", project=project
+        )
 
-    functions_body_lines: set[int] = set()
-    context_lines: dict[Path, set[int]] = defaultdict(set)
-    for fix_line in fix_changes_line_numbers:
-        if fix_line in functions_body_lines:
-            continue
-        line_text = read_lines(script_path, [fix_line])[0].strip()
-        if line_text.startswith("#"):
-            continue
-        line_context = script.get_context(fix_line)
+        functions_body_lines: set[int] = set()
+        context_lines: dict[Path, set[int]] = defaultdict(set)
+        for fix_line in fix_changes_line_numbers:
+            if fix_line in functions_body_lines:
+                continue
+            line_context = script.get_context(fix_line)
+            if line_context.type == "class" or line_context.type == "function":
+                functions_body_lines.update(get_function_body_lines(line_context))
+                # for context_file, context_line_numbers in get_function_context(
+                #     script, line_context
+                # ).items():
+                #     context_lines[context_file].update(context_line_numbers)
+            else:
+                functions_body_lines.add(fix_line)
 
-        if line_text.startswith("@"):
-            functions_body_lines.add(fix_line)
-            continue
-        if line_context.type == "class":
-            functions_body_lines.update(get_class_unit_lines(line_context, fix_line))
-        elif line_context.type == "function":
-            functions_body_lines.update(get_function_body_lines(line_context))
-            # for context_file, context_line_numbers in get_function_context(
-            #     script, line_context
-            # ).items():
-            #     context_lines[context_file].update(context_line_numbers)
-        elif script_text[fix_line - 1].strip() == "":
-            continue
-        else:
-            names = script.get_names()
-            for idx, name in enumerate(names):
-                if (
-                    name.get_definition_start_position()[0]
-                    <= fix_line
-                    <= name.get_definition_end_position()[0]
-                ):
-                    functions_body_lines.update(
-                        range(
-                            name.get_definition_start_position()[0],
-                            name.get_definition_end_position()[0] + 1,
-                        )
-                    )
-                    break
-                if name.get_definition_start_position()[0] > fix_line:
-                    functions_body_lines.update(
-                        range(
-                            names[idx - 1].get_definition_end_position()[0] + 1,
-                            name.get_definition_start_position()[0],
-                        )
-                    )
-                    break
-
-    code_unit_data = "".join(
-        read_lines(f"{REPOS_PATH}/{repo_name}/{file_name}", functions_body_lines)
-    )
-    context_data = {
-        # cut_home_path(Path(file)): "\n".join(read_lines(str(file), lines))
-        # for file, lines in context_lines.items()
-    }
+        code_unit_data = "\n".join(
+            read_lines(f"{REPOS_PATH}/{repo_name}/{file_name}", functions_body_lines)
+        )
+        context_data = {
+            # cut_home_path(Path(file)): "\n".join(read_lines(str(file), lines))
+            # for file, lines in context_lines.items()
+        }
 
     return (
         code_unit_data,
