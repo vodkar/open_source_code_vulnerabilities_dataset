@@ -172,4 +172,5 @@ outputs/
 pretrained_vulnerability_searcher/
 pretrained_vulnerability_searcher_16_bit/
 vulnerability_searcher/
-
+pretrained_vulnerability_searcher_gguf_q4_k_m/
+pretrained_vulnerability_searcher_gguf_f16/
