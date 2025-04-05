@@ -1,13 +1,11 @@
 import json
 import logging
-import multiprocessing
 import os
 import re
 import shutil
 import tempfile
 import token
 import tokenize
-from multiprocessing import Process, Queue
 from pathlib import Path
 from time import sleep
 from typing import Any
@@ -105,29 +103,6 @@ def clear_file_content(content: str):
         # If comments removing broke syntax, we dont remove commits.
         new_content = format_str(content, mode=FileMode())
     return re.sub(r"\n\s*\n", "\n", new_content)
-
-
-def get_changes_lines_units(
-    repo_name: str, file_name: str, fix_changes_line_numbers: list[int]
-) -> tuple[str, dict[Path, str]]:
-    # multiprocessing.set_start_method("fork", force=True)
-    queue = Queue()  # Create a queue to share data between processes
-    process = Process(
-        target=_get_changes_lines_units,
-        args=(repo_name, file_name, fix_changes_line_numbers, queue),
-    )
-    process.start()
-    process.join()  # Wait for the process to finish
-
-    # Get the result from the queue
-    result = queue.get()
-
-    if isinstance(result, Exception):
-        raise Exception(
-            "Error after multiprocessing"
-        ) from result  # Re-raise any exception that occurred in the process
-
-    return result
 
 
 def get_changes(commit_data_row: dict[str, Any]) -> None:
