@@ -1,3 +1,3 @@
 # Open source vulnerabilities dataset
 
-Dataset available in release section
+Dataset available [here](./final_vulnerabilities.parquet)
